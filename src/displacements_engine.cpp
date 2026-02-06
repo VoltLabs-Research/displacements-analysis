@@ -1,4 +1,4 @@
-#include <opendxa/analysis/compute_displacements.h>
+#include <volt/displacements_engine.h>
 
 #include <stdexcept>
 #include <limits>
@@ -9,11 +9,11 @@
 #include <tbb/parallel_for.h>
 #include <tbb/blocked_range.h>
 
-namespace OpenDXA{
+namespace Volt{
 
 using namespace Particles;
 
-ComputeDisplacements::ComputeDisplacements(
+DisplacementsEngine::DisplacementsEngine(
     ParticleProperty* positions,
     const SimulationCell& cell,
     ParticleProperty* refPositions,
@@ -32,7 +32,7 @@ ComputeDisplacements::ComputeDisplacements(
       _useMinimumImageConvention(useMinimumImageConvention),
       _affineMapping(affineMapping){}
 
-void ComputeDisplacements::buildParticleMapping(
+void DisplacementsEngine::buildParticleMapping(
     std::vector<std::size_t>& currentToRefIndexMap,
     std::vector<std::size_t>& refToCurrentIndexMap,
     bool requireCompleteCurrentToRefMapping,
@@ -48,11 +48,11 @@ void ComputeDisplacements::buildParticleMapping(
     
     if(haveIds){
         if(_identifiers->size() != nCurr){
-            throw std::runtime_error("ComputeDisplacements: identifiers size != positions size.");
+            throw std::runtime_error("DisplacementsEngine: identifiers size != positions size.");
         }
 
         if(_refIdentifiers->size() != nRef){
-            throw std::runtime_error("ComputeDisplacements: refIdentifiers size != refPositions size.");
+            throw std::runtime_error("DisplacementsEngine: refIdentifiers size != refPositions size.");
         }
 
         // Map ID -> index (reference)
@@ -63,7 +63,7 @@ void ComputeDisplacements::buildParticleMapping(
             const int id = _refIdentifiers->getInt(i);
             auto [it, inserted] = refMap.emplace(id, i);
             if(!inserted){
-                throw std::runtime_error("ComputeDisplacements: duplicate particle identifier in reference configuration.");
+                throw std::runtime_error("DisplacementsEngine: duplicate particle identifier in reference configuration.");
             }
         }
 
@@ -75,7 +75,7 @@ void ComputeDisplacements::buildParticleMapping(
             const int id = _identifiers->getInt(i);
             auto [it, inserted] = currMap.emplace(id, i);
             if(!inserted) {
-                throw std::runtime_error("ComputeDisplacements: duplicate particle identifier in current configuration.");
+                throw std::runtime_error("DisplacementsEngine: duplicate particle identifier in current configuration.");
             }
         }
 
@@ -86,7 +86,7 @@ void ComputeDisplacements::buildParticleMapping(
             if(it != refMap.end()){
                 currentToRefIndexMap[i] = it->second;
             }else if(requireCompleteCurrentToRefMapping){
-                throw std::runtime_error("ComputeDisplacements: particle ID exists in current but not in reference.");
+                throw std::runtime_error("DisplacementsEngine: particle ID exists in current but not in reference.");
             }else{
                 currentToRefIndexMap[i] = std::numeric_limits<std::size_t>::max();
             }
@@ -99,7 +99,7 @@ void ComputeDisplacements::buildParticleMapping(
             if(it != currMap.end()){
                 refToCurrentIndexMap[i] = it->second;
             }else if(requireCompleteRefToCurrentMapping){
-                throw std::runtime_error("ComputeDisplacements: particle ID exists in reference but not in current.");
+                throw std::runtime_error("DisplacementsEngine: particle ID exists in reference but not in current.");
             }else{
                 // OJO: aca estabas escribiendo en el vector equivocado
                 refToCurrentIndexMap[i] = std::numeric_limits<std::size_t>::max();
@@ -108,7 +108,7 @@ void ComputeDisplacements::buildParticleMapping(
     }else{
         // NO IDs: require same number of particles and assume same ordering
         if(nCurr != nRef){
-            throw std::runtime_error("ComputeDisplacements: positions and refPositions size mismatch and no identifiers present.");
+            throw std::runtime_error("DisplacementsEngine: positions and refPositions size mismatch and no identifiers present.");
         }
 
         for(std::size_t i = 0; i < nCurr; i++){
@@ -118,9 +118,9 @@ void ComputeDisplacements::buildParticleMapping(
     }
 }
 
-void ComputeDisplacements::perform(){
+void DisplacementsEngine::perform(){
     if(!_positions || !_refPositions){
-        throw std::runtime_error("ComputeDisplacements: null input properties.");
+        throw std::runtime_error("DisplacementsEngine: null input properties.");
     }
 
     const std::size_t n = _positions->size();
@@ -147,7 +147,7 @@ void ComputeDisplacements::perform(){
     double* outMag = _displacementMagnitudeProperty->dataDouble();
 
     if(!pos || !refPos || !outU || !outMag){
-        throw std::runtime_error("ComputeDisplacements: null data pointers.");
+        throw std::runtime_error("DisplacementsEngine: null data pointers.");
     }
 
     // PBC and cell matrices

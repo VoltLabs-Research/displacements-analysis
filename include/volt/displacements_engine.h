@@ -1,15 +1,14 @@
 #pragma once
 
-#include <opendxa/core/opendxa.h>
-#include <opendxa/core/simulation_cell.h>
-#include <opendxa/core/particle_property.h>
-#include <opendxa/core/opendxa.h>
+#include <volt/core/volt.h>
+#include <volt/core/simulation_cell.h>
+#include <volt/core/particle_property.h>
 
 #include <memory>
 
-namespace OpenDXA{
+namespace Volt{
 
-class ComputeDisplacements{
+class DisplacementsEngine{
 public:
     enum class AffineMappingType{
         NoMapping = 0,
@@ -17,7 +16,7 @@ public:
         ToCurrentCell
     };
 
-    ComputeDisplacements(
+    DisplacementsEngine(
         Particles::ParticleProperty* positions,
         const SimulationCell& cell,
         Particles::ParticleProperty* refPositions,
