@@ -1,11 +1,11 @@
-#include <opendxa/cli/common.h>
-#include <opendxa/wrappers/compute_displacements.h>
+#include <volt/cli/common.h>
+#include <volt/displacements_service.h>
 
-using namespace OpenDXA;
-using namespace OpenDXA::CLI;
+using namespace Volt;
+using namespace Volt::CLI;
 
 static void showUsage(const std::string& name){
-    printUsageHeader(name, "OpenDXA - Displacements Analysis");
+    printUsageHeader(name, "Volt - Displacements Analysis");
     std::cerr
         << "  --reference <file>            Reference LAMMPS dump file.\n"
         << "                                If omitted, current frame is used (≈ zero displacement).\n"
@@ -15,13 +15,13 @@ static void showUsage(const std::string& name){
     printHelpOption();
 }
 
-static ComputeDisplacements::AffineMappingType parseAffineMapping(const std::string& s){
-    if(s == "noMapping") return ComputeDisplacements::AffineMappingType::NoMapping;
-    if(s == "toReferenceCell") return ComputeDisplacements::AffineMappingType::ToReferenceCell;
-    if(s == "toCurrentCell") return ComputeDisplacements::AffineMappingType::ToCurrentCell;
+static DisplacementsEngine::AffineMappingType parseAffineMapping(const std::string& s){
+    if(s == "noMapping") return DisplacementsEngine::AffineMappingType::NoMapping;
+    if(s == "toReferenceCell") return DisplacementsEngine::AffineMappingType::ToReferenceCell;
+    if(s == "toCurrentCell") return DisplacementsEngine::AffineMappingType::ToCurrentCell;
 
     spdlog::warn("Unknown affineMapping '{}', defaulting to 'none'.", s);
-    return ComputeDisplacements::AffineMappingType::NoMapping;
+    return DisplacementsEngine::AffineMappingType::NoMapping;
 }
 
 int main(int argc, char* argv[]){
@@ -39,7 +39,7 @@ int main(int argc, char* argv[]){
     }
 
     auto parallel = initParallelism(opts, false);
-    initLogging("opendxa-displacements", parallel.threads);
+    initLogging("volt-displacements", parallel.threads);
 
     LammpsParser::Frame frame;
     if(!parseFrame(filename, frame)) return 1;
@@ -71,7 +71,7 @@ int main(int argc, char* argv[]){
     bool mic = getBool(opts, "--mic", true);
     auto affineMapping = parseAffineMapping(getString(opts, "--affineMapping", "none"));
 
-    DisplacementsWrapper analyzer;
+    DisplacementsService analyzer;
     analyzer.setOptions(mic, affineMapping);
 
     if(hasReference){
