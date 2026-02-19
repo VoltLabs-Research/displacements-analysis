@@ -36,12 +36,12 @@ json DisplacementsService::compute(const LammpsParser::Frame& currentFrame, cons
         return AnalysisResult::failure("Atom count mismatch between current and reference frames");
     }
 
-    auto positions = FrameAdapter::createPositionProperty(currentFrame);
+    auto positions = FrameAdapter::createPositionPropertyShared(currentFrame);
     if(!positions){
         return AnalysisResult::failure("Failed to create position property");
     }
 
-    auto refPositions = FrameAdapter::createPositionProperty(refFrame);
+    auto refPositions = FrameAdapter::createPositionPropertyShared(refFrame);
     if(!refPositions){
         return AnalysisResult::failure("Failed to create reference position property");
     }
