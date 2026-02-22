@@ -2,6 +2,7 @@
 #include <volt/displacements_engine.h>
 #include <volt/core/frame_adapter.h>
 #include <volt/core/analysis_result.h>
+#include <volt/utilities/json_utils.h>
 #include <spdlog/spdlog.h>
 
 namespace Volt{
@@ -73,11 +74,16 @@ json DisplacementsService::compute(const LammpsParser::Frame& currentFrame, cons
     json result = AnalysisResult::success();
     AnalysisResult::addTiming(result, startTime);
 
-    if(!outputFilename.empty()){
-        // TODO: Implement msgpack export in standalone package
-        spdlog::warn("File output not yet implemented in standalone package");
-    }
     result["displacements"] = json::array();
+
+    if(!outputFilename.empty()){
+        const std::string outputPath = outputFilename + "_displacements.msgpack";
+        if(JsonUtils::writeJsonMsgpackToFile(result, outputPath, false)){
+            spdlog::info("Displacements msgpack written to {}", outputPath);
+        }else{
+            spdlog::warn("Could not write displacements msgpack: {}", outputPath);
+        }
+    }
 
     return result;
 }
