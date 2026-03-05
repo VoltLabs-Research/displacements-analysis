@@ -4,6 +4,7 @@
 #include <volt/core/analysis_result.h>
 #include <volt/utilities/json_utils.h>
 #include <spdlog/spdlog.h>
+#include <limits>
 
 namespace Volt{
 
@@ -27,31 +28,26 @@ void DisplacementsService::setOptions(bool useMinimumImageConvention, Displaceme
 json DisplacementsService::compute(const LammpsParser::Frame& currentFrame, const std::string &outputFilename){
     auto startTime = std::chrono::high_resolution_clock::now();
 
-    if(currentFrame.natoms <= 0){
+    if(currentFrame.natoms <= 0)
         return AnalysisResult::failure("Invalid number of atoms");
-    }
 
     const LammpsParser::Frame &refFrame = _hasReference ? _referenceFrame : currentFrame;
 
-    if(currentFrame.natoms != refFrame.natoms){
+    if(currentFrame.natoms != refFrame.natoms)
         return AnalysisResult::failure("Atom count mismatch between current and reference frames");
-    }
 
     auto positions = FrameAdapter::createPositionPropertyShared(currentFrame);
-    if(!positions){
+    if(!positions)
         return AnalysisResult::failure("Failed to create position property");
-    }
 
     auto refPositions = FrameAdapter::createPositionPropertyShared(refFrame);
-    if(!refPositions){
+    if(!refPositions)
         return AnalysisResult::failure("Failed to create reference position property");
-    }
 
     auto identifiers = FrameAdapter::createIdentifierProperty(currentFrame);
     auto refIdentifiers = FrameAdapter::createIdentifierProperty(refFrame);
-    if(!identifiers || !refIdentifiers){
+    if(!identifiers || !refIdentifiers)
         return AnalysisResult::failure("Failed to create identifier properties");
-    }
 
     spdlog::info("Starting displacement analysis (MIC = {}, affineMapping = {})...",
         _useMinimumImageConvention ? "true" : "false",
@@ -71,10 +67,46 @@ json DisplacementsService::compute(const LammpsParser::Frame& currentFrame, cons
 
     engine.perform();
 
-    json result = AnalysisResult::success();
-    AnalysisResult::addTiming(result, startTime);
+    auto U = engine.displacements();
+    auto Umag = engine.displacementMagnitudes();
 
-    result["displacements"] = json::array();
+    const size_t n = static_cast<size_t>(currentFrame.natoms);
+    double totalMag = 0.0;
+    double maxMag = 0.0;
+    double minMag = std::numeric_limits<double>::max();
+
+    if(U && Umag){
+        for(size_t i = 0; i < n; i++){
+            double m = Umag->getDouble(i);
+            totalMag += m;
+            if(m > maxMag) maxMag = m;
+            if(m < minMag) minMag = m;
+        }
+    }
+
+    json result;
+    result["main_listing"] = {
+        { "average_displacement_magnitude", n > 0 ? totalMag / n : 0.0 },
+        { "max_displacement_magnitude", maxMag },
+        { "min_displacement_magnitude", (minMag == std::numeric_limits<double>::max()) ? 0.0 : minMag }
+    };
+
+    json perAtom = json::array();
+    for(size_t i = 0; i < n; i++){
+        json a;
+        a["id"] = currentFrame.ids[i];
+
+        if(U){
+            Vector3 u = U->dataVector3()[i];
+            a["displacement"] = {u.x(), u.y(), u.z()};
+        } else {
+            a["displacement"] = {0.0, 0.0, 0.0};
+        }
+
+        a["magnitude"] = Umag ? Umag->getDouble(i) : 0.0;
+        perAtom.push_back(a);
+    }
+    result["per-atom-properties"] = perAtom;
 
     if(!outputFilename.empty()){
         const std::string outputPath = outputFilename + "_displacements.msgpack";
@@ -89,3 +121,4 @@ json DisplacementsService::compute(const LammpsParser::Frame& currentFrame, cons
 }
 
 }
+
