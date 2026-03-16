@@ -33,8 +33,23 @@ set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type")
 set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release MinSizeRel RelWithDebInfo)
 
 find_package(coretoolkit REQUIRED)
+find_package(TBB REQUIRED)
+find_package(Boost REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(nlohmann_json REQUIRED)
+
+set(DISPLACEMENT_ANALYSIS_BOOST_TARGET "")
+if(TARGET Boost::headers)
+    set(DISPLACEMENT_ANALYSIS_BOOST_TARGET Boost::headers)
+elseif(TARGET Boost::boost)
+    set(DISPLACEMENT_ANALYSIS_BOOST_TARGET Boost::boost)
+elseif(TARGET boost::headers)
+    set(DISPLACEMENT_ANALYSIS_BOOST_TARGET boost::headers)
+elseif(TARGET boost::boost)
+    set(DISPLACEMENT_ANALYSIS_BOOST_TARGET boost::boost)
+else()
+    message(FATAL_ERROR "DisplacementsAnalysis requires a Boost headers target")
+endif()
 
 # Collect all library sources (exclude main.cpp)
 file(GLOB LIB_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/*.cpp)
@@ -45,6 +60,8 @@ add_library(${PROJECT_NAME}_lib STATIC ${LIB_SOURCES})
 target_include_directories(${PROJECT_NAME}_lib PUBLIC ${CMAKE_SOURCE_DIR}/include)
 target_precompile_headers(${PROJECT_NAME}_lib PRIVATE <volt/core/volt.h>)
 target_link_libraries(${PROJECT_NAME}_lib PUBLIC 
+    ${DISPLACEMENT_ANALYSIS_BOOST_TARGET}
+    TBB::tbb
     coretoolkit::coretoolkit 
     spdlog::spdlog
     nlohmann_json::nlohmann_json
@@ -57,6 +74,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_precompile_headers(${PROJECT_NAME} PRIVATE <volt/core/volt.h>)
 target_link_libraries(${PROJECT_NAME} PRIVATE 
     ${PROJECT_NAME}_lib 
+    ${DISPLACEMENT_ANALYSIS_BOOST_TARGET}
+    TBB::tbb
     coretoolkit::coretoolkit
     spdlog::spdlog
 )
