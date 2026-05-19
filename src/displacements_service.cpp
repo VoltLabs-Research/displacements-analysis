@@ -115,10 +115,46 @@ json DisplacementsService::compute(const LammpsParser::Frame& currentFrame, cons
         }else{
             spdlog::warn("Could not write displacements msgpack: {}", outputPath);
         }
+
+        // --- atoms.msgpack (AtomisticExporter) ---
+        // Mirrors OVITO's CalculateDisplacementsModifier output:
+        // DisplacementProperty (Vector3) + DisplacementMagnitudeProperty
+        // (scalar). Atoms are emitted in a single "All" bucket.
+        json atomsArray = json::array();
+        for(size_t i = 0; i < n; i++){
+            const Point3& pos = currentFrame.positions[i];
+            Vector3 u = U ? U->dataVector3()[i] : Vector3(0.0, 0.0, 0.0);
+            atomsArray.push_back({
+                {"id", currentFrame.ids[i]},
+                {"pos", {pos.x(), pos.y(), pos.z()}},
+                {"structure_id", 0},
+                {"structure_name", "All"},
+                {"cluster_id", 0},
+                {"displacement", {u.x(), u.y(), u.z()}},
+                {"magnitude", Umag ? Umag->getDouble(i) : 0.0}
+            });
+        }
+        json structuresListing = json::array();
+        structuresListing.push_back({
+            {"structure_id", 0}, {"structure_name", "All"}, {"atom_count", static_cast<int>(n)}
+        });
+        json exportWrapper;
+        exportWrapper["main_listing"] = {
+            {"total_atoms", static_cast<int>(n)},
+            {"structure_count", 1}
+        };
+        exportWrapper["sub_listings"] = { {"structures", structuresListing} };
+        exportWrapper["export"] = json::object();
+        exportWrapper["export"]["AtomisticExporter"] = {{"All", atomsArray}};
+        const std::string atomsPath = outputFilename + "_atoms.msgpack";
+        if(JsonUtils::writeJsonMsgpackToFile(exportWrapper, atomsPath, false)){
+            spdlog::info("Exported atoms data to: {}", atomsPath);
+        }else{
+            spdlog::warn("Could not write atoms msgpack: {}", atomsPath);
+        }
     }
 
     return result;
 }
 
 }
-
