@@ -64,6 +64,6 @@ displacement-analysis <lammps_file> [output_base] [options]
 | `[output_base]` | No | Base path for output files. | derived from input |
 | `--reference <file>` | No | Reference LAMMPS dump file. If omitted, the current frame is used. | current frame |
 | `--mic` | No | Use minimum image convention. | `true` |
-| `--affineMapping <mode>` | No | Affine mapping mode: `noMapping`, `toReferenceCell`, `toCurrentCell`. | `noMapping` |
+| `--affine_mapping <mode>` | No | Affine mapping mode: `noMapping`, `toReferenceCell`, `toCurrentCell`. | `noMapping` |
 | `--threads <int>` | No | Maximum worker threads. | auto |
 | `--help` | No | Print CLI help. | |
