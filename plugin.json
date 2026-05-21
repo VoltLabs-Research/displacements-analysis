@@ -43,7 +43,7 @@
                 "default": true
               },
               {
-                "argument": "affineMapping",
+                "argument": "affine_mapping",
                 "type": "select",
                 "label": "Affine Mapping",
                 "default": "none",

@@ -11,7 +11,7 @@ static void showUsage(const std::string& name){
         << "  --reference <file>            Reference LAMMPS dump file.\n"
         << "                                If omitted, current frame is used (≈ zero displacement).\n"
         << "  --mic                         Use minimum image convention. [default: true]\n"
-        << "  --affineMapping <mode>        Affine mapping mode: noMapping|toReferenceCell|toCurrentCell [default: noMapping]\n"
+        << "  --affine_mapping <mode>        Affine mapping mode: noMapping|toReferenceCell|toCurrentCell [default: noMapping]\n"
         << "  --threads <int>               Max worker threads (TBB/OMP). [default: auto]\n";
     printHelpOption();
 }
@@ -21,7 +21,7 @@ static DisplacementsEngine::AffineMappingType parseAffineMapping(const std::stri
     if(s == "toReferenceCell") return DisplacementsEngine::AffineMappingType::ToReferenceCell;
     if(s == "toCurrentCell") return DisplacementsEngine::AffineMappingType::ToCurrentCell;
 
-    spdlog::warn("Unknown affineMapping '{}', defaulting to 'none'.", s);
+    spdlog::warn("Unknown affine_mapping '{}', defaulting to 'none'.", s);
     return DisplacementsEngine::AffineMappingType::NoMapping;
 }
 
@@ -77,10 +77,10 @@ int main(int argc, char* argv[]){
 
     // Options
     bool mic = getBool(opts, "--mic", true);
-    auto affineMapping = parseAffineMapping(getString(opts, "--affineMapping", "none"));
+    auto affine_mapping = parseAffineMapping(getString(opts, "--affine_mapping", "none"));
 
     DisplacementsService analyzer;
-    analyzer.setOptions(mic, affineMapping);
+    analyzer.setOptions(mic, affine_mapping);
 
     if(hasReference){
         analyzer.setReferenceFrame(refFrame);
