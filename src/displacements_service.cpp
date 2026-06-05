@@ -2,8 +2,10 @@
 #include <volt/displacements_engine.h>
 #include <volt/core/frame_adapter.h>
 #include <volt/core/analysis_result.h>
-#include <volt/utilities/json_utils.h>
+#include <volt/utilities/msgpack_atom_writer.h>
 #include <spdlog/spdlog.h>
+
+#include <fstream>
 #include <limits>
 
 namespace Volt{
@@ -26,8 +28,6 @@ void DisplacementsService::setOptions(bool useMinimumImageConvention, Displaceme
 }
 
 json DisplacementsService::compute(const LammpsParser::Frame& currentFrame, const std::string &outputFilename){
-    auto startTime = std::chrono::high_resolution_clock::now();
-
     if(currentFrame.natoms <= 0)
         return AnalysisResult::failure("Invalid number of atoms");
 
@@ -91,24 +91,8 @@ json DisplacementsService::compute(const LammpsParser::Frame& currentFrame, cons
         { "min_displacement_magnitude", (minMag == std::numeric_limits<double>::max()) ? 0.0 : minMag }
     };
 
-    json perAtom = json::array();
-    for(size_t i = 0; i < n; i++){
-        json a;
-        a["id"] = currentFrame.ids[i];
-
-        if(U){
-            Vector3 u = U->dataVector3()[i];
-            a["displacement"] = {u.x(), u.y(), u.z()};
-        } else {
-            a["displacement"] = {0.0, 0.0, 0.0};
-        }
-
-        a["magnitude"] = Umag ? Umag->getDouble(i) : 0.0;
-        perAtom.push_back(a);
-    }
-    result["per-atom-properties"] = perAtom;
-
     if(!outputFilename.empty()){
+        // _displacements.msgpack: summary only (no per-atom array)
         const std::string outputPath = outputFilename + "_displacements.msgpack";
         if(JsonUtils::writeJsonMsgpackToFile(result, outputPath, false)){
             spdlog::info("Displacements msgpack written to {}", outputPath);
@@ -116,42 +100,21 @@ json DisplacementsService::compute(const LammpsParser::Frame& currentFrame, cons
             spdlog::warn("Could not write displacements msgpack: {}", outputPath);
         }
 
-        // --- atoms.msgpack (AtomisticExporter) ---
-        // Mirrors OVITO's CalculateDisplacementsModifier output:
-        // DisplacementProperty (Vector3) + DisplacementMagnitudeProperty
-        // (scalar). Atoms are emitted in a single "All" bucket.
-        json atomsArray = json::array();
-        for(size_t i = 0; i < n; i++){
-            const Point3& pos = currentFrame.positions[i];
-            Vector3 u = U ? U->dataVector3()[i] : Vector3(0.0, 0.0, 0.0);
-            atomsArray.push_back({
-                {"id", currentFrame.ids[i]},
-                {"pos", {pos.x(), pos.y(), pos.z()}},
-                {"structure_id", 0},
-                {"structure_name", "All"},
-                {"cluster_id", 0},
-                {"displacement", {u.x(), u.y(), u.z()}},
-                {"magnitude", Umag ? Umag->getDouble(i) : 0.0}
-            });
-        }
-        json structuresListing = json::array();
-        structuresListing.push_back({
-            {"structure_id", 0}, {"structure_name", "All"}, {"atom_count", static_cast<int>(n)}
-        });
-        json exportWrapper;
-        exportWrapper["main_listing"] = {
-            {"total_atoms", static_cast<int>(n)},
-            {"structure_count", 1}
+        // _atoms.msgpack: streaming, no DOM
+        auto fieldWriter = [&](MsgpackWriter& w, std::size_t i, int& count){
+            count = 2;
+            w.write_key("displacement"); w.write_array_header(3);
+            const Vector3 u = U ? U->dataVector3()[i] : Vector3(0.0, 0.0, 0.0);
+            w.write_double(u.x()); w.write_double(u.y()); w.write_double(u.z());
+            w.write_key("magnitude"); w.write_double(Umag ? Umag->getDouble(i) : 0.0);
         };
-        exportWrapper["sub_listings"] = { {"structures", structuresListing} };
-        exportWrapper["export"] = json::object();
-        exportWrapper["export"]["AtomisticExporter"] = {{"All", atomsArray}};
+
         const std::string atomsPath = outputFilename + "_atoms.msgpack";
-        if(JsonUtils::writeJsonMsgpackToFile(exportWrapper, atomsPath, false)){
-            spdlog::info("Exported atoms data to: {}", atomsPath);
-        }else{
-            spdlog::warn("Could not write atoms msgpack: {}", atomsPath);
-        }
+        streamAtomsToFile(atomsPath, currentFrame,
+            [](std::size_t){ return std::string("All"); },
+            fieldWriter
+        );
+        spdlog::info("Exported atoms data to: {}", atomsPath);
     }
 
     return result;
