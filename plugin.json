@@ -15,9 +15,9 @@
             "icon": "HiCube",
             "author": "Rodolfo Herrera",
             "license": "MIT",
-            "version": "1.0.0",
+            "version": "1.0.1",
             "homepage": "https://github.com/rodyherrera/Volterra",
-            "description": "Calcula desplazamientos atomicos respecto a una configuracion de referencia, con soporte para minimum image convention."
+            "description": ""
           }
         }
       },
