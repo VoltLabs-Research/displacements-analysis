@@ -15,7 +15,7 @@
             "icon": "HiCube",
             "author": "Rodolfo Herrera",
             "license": "MIT",
-            "version": "1.0.1",
+            "version": "1.0.2",
             "homepage": "https://github.com/rodyherrera/Volterra",
             "description": ""
           }
@@ -101,12 +101,10 @@
         },
         "data": {
           "entrypoint": {
-            "type": "python-script",
-            "binary": "displacement-analysis-plugin.zip",
+            "type": "executable",
+            "binary": "displacement-analysis",
             "binaryObjectPath": "__UPLOAD_BINARY_OBJECT_PATH__",
-            "binaryFileName": "displacement-analysis-plugin.zip",
-            "entrypointScript": "scripts/displacements_plugin_wrapper.py",
-            "requirementsFile": "",
+            "binaryFileName": "displacement-analysis",
             "arguments": "{{ foreach-trajectory-dumps.currentValue.path }} {{ foreach-trajectory-dumps.outputPath }} {{ plugin-arguments.as_str }}",
             "timeout": -1
           }
