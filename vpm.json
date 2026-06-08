@@ -1,6 +1,6 @@
 {
   "name": "@voltlabs/displacements-analysis",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "kind": "workflow",
   "publisher": "voltlabs",
   "description": "Calculates per-atom displacements relative to a reference configuration, accounting for periodic boundary conditions using the minimum image convention.",
