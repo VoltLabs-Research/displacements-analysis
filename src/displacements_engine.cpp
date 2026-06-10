@@ -1,4 +1,5 @@
 #include <volt/displacements_engine.h>
+#include <volt/analysis/cutoff_neighbor_finder.h>
 
 #include <stdexcept>
 #include <limits>
@@ -217,6 +218,62 @@ void DisplacementsEngine::perform(){
             doRange(r.begin(), r.end());
         }
     );
+
+    if(_computeSlipVector && _slipCutoff > 0.0){
+        computeSlipVectors(currentToRef, refToCurrent);
+    }
 }
 
-} 
+void DisplacementsEngine::computeSlipVectors(
+    const std::vector<std::size_t>& currentToRefIndexMap,
+    const std::vector<std::size_t>& refToCurrentIndexMap
+){
+    const std::size_t n = _positions->size();
+    _slipVectorProperty = std::make_shared<ParticleProperty>(n, ParticleProperty::DisplacementProperty, 3, true);
+    _slipVectorMagnitudeProperty = std::make_shared<ParticleProperty>(n, ParticleProperty::DisplacementMagnitudeProperty, 1, true);
+
+    // Neighbors come from the reference configuration: the slip vector compares
+    // each bond against its pre-deformation counterpart, so the bond list must
+    // predate the deformation as well.
+    CutoffNeighborFinder neighborFinder;
+    if(!neighborFinder.prepare(_slipCutoff, _refPositions, _simCellRef)){
+        throw std::runtime_error("DisplacementsEngine: failed to prepare the slip-vector neighbor list.");
+    }
+
+    const Vector3* displacements = _displacementProperty->dataVector3();
+    Vector3* outSlip = _slipVectorProperty->dataVector3();
+    double* outSlipMag = _slipVectorMagnitudeProperty->dataDouble();
+    const double thresholdSquared = _slipThreshold * _slipThreshold;
+    constexpr std::size_t unmapped = std::numeric_limits<std::size_t>::max();
+
+    tbb::parallel_for(
+        tbb::blocked_range<std::size_t>(0, n, 256),
+        [&](const tbb::blocked_range<std::size_t>& r){
+            for(std::size_t i = r.begin(); i < r.end(); i++){
+                const std::size_t refIndex = currentToRefIndexMap[i];
+                Vector3 accumulated(0.0, 0.0, 0.0);
+                int slippedNeighbors = 0;
+
+                for(CutoffNeighborFinder::Query neighborQuery(neighborFinder, refIndex);
+                    !neighborQuery.atEnd(); neighborQuery.next()){
+                    const std::size_t neighborCurrentIndex = refToCurrentIndexMap[neighborQuery.current()];
+                    if(neighborCurrentIndex == unmapped) continue;
+
+                    const Vector3 relativeSlip = displacements[neighborCurrentIndex] - displacements[i];
+                    if(relativeSlip.squaredLength() <= thresholdSquared) continue;
+
+                    accumulated += relativeSlip;
+                    slippedNeighbors++;
+                }
+
+                if(slippedNeighbors > 0){
+                    const Vector3 slip = accumulated * (-1.0 / slippedNeighbors);
+                    outSlip[i] = slip;
+                    outSlipMag[i] = slip.length();
+                }
+            }
+        }
+    );
+}
+
+}
