@@ -15,7 +15,7 @@
             "icon": "HiCube",
             "author": "Rodolfo Herrera",
             "license": "MIT",
-            "version": "1.0.3",
+            "version": "2.0.0",
             "homepage": "https://github.com/rodyherrera/Volterra",
             "description": ""
           }
@@ -61,6 +61,28 @@
                     "label": "To Current"
                   }
                 ]
+              },
+              {
+                "argument": "compute_slip_vector",
+                "type": "boolean",
+                "label": "Compute Slip Vector",
+                "default": true
+              },
+              {
+                "argument": "slip_cutoff",
+                "type": "number",
+                "label": "Slip Neighbor Cutoff (Å)",
+                "default": 3.5,
+                "min": 0,
+                "step": 0.1
+              },
+              {
+                "argument": "slip_threshold",
+                "type": "number",
+                "label": "Slip Threshold (Å)",
+                "default": 0.5,
+                "min": 0,
+                "step": 0.05
               }
             ]
           }
