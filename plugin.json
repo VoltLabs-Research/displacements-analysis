@@ -121,7 +121,7 @@
           "exposure": {
             "name": "Displacements",
             "icon": "HiCube",
-            "results": "displacements.msgpack",
+            "results": "displacements.parquet",
             "iterable": ""
           }
         }
@@ -137,7 +137,7 @@
           "exposure": {
             "name": "Displacements Model",
             "icon": "HiCube",
-            "results": "atoms.msgpack",
+            "results": "atoms.parquet",
             "iterable": ""
           }
         }

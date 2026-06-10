@@ -92,12 +92,10 @@ VOLT_PLUGIN_MAIN(descriptor,
             Plugin::serializePluginOutput(outputBase, frame, result, {
                 .summaryFileSuffix = "_displacements",
                 .bucketResolver = [](std::size_t) { return std::string("All"); },
-                .atomFieldWriter = [&U, &Umag](MsgpackWriter& w, std::size_t i, int& count) {
-                    count = 2;
-                    w.write_key("displacement"); w.write_array_header(3);
+                .perAtomColumnWriter = [&U, &Umag](ColumnarAtomWriter& w, std::size_t i) {
                     const Vector3 u = U ? U->dataVector3()[i] : Vector3(0.0, 0.0, 0.0);
-                    w.write_double(u.x()); w.write_double(u.y()); w.write_double(u.z());
-                    w.write_key("magnitude"); w.write_double(Umag ? Umag->getDouble(i) : 0.0);
+                    w.field("displacement", std::vector<double>{u.x(), u.y(), u.z()});
+                    w.field("magnitude", Umag ? Umag->getDouble(i) : 0.0);
                 }
             });
         }
