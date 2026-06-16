@@ -3,6 +3,7 @@
 #include <volt/displacements_engine.h>
 #include <volt/core/frame_adapter.h>
 #include <volt/core/analysis_result.h>
+#include <volt/structures/crystal_structure_types.h>
 
 #include <limits>
 
@@ -112,9 +113,22 @@ VOLT_PLUGIN_MAIN(descriptor,
         }
 
         if (!outputBase.empty()) {
+            // displacement is a mid-pipeline stage; preserve any upstream crystal-structure
+            // classification rather than collapsing every atom to one "All" bucket. PTM writes
+            // it as `structure_id`, ackland-jones/identify-diamond as `structure_type`; both hold
+            // the StructureType enum. Fall back to "All" only when no classifier ran upstream.
+            const auto* structureCol = frame.findAtomProperty("structure_id");
+            if (!structureCol) structureCol = frame.findAtomProperty("structure_type");
+            const auto structureTypeAt = [structureCol](std::size_t i) -> int {
+                return (structureCol && i < structureCol->size()) ? structureCol->ints[i] : -1;
+            };
+
             Plugin::serializePluginOutput(outputBase, frame, result, {
                 .summaryFileSuffix = "_displacements",
-                .bucketResolver = [](std::size_t) { return std::string("All"); },
+                .bucketResolver = [&](std::size_t i) {
+                    const int s = structureTypeAt(i);
+                    return s < 0 ? std::string("All") : std::string(structureTypeName(s));
+                },
                 .perAtomColumnWriter = [&U, &Umag, &S, &Smag](ColumnarAtomWriter& w, std::size_t i) {
                     const Vector3 u = U ? U->dataVector3()[i] : Vector3(0.0, 0.0, 0.0);
                     w.field("displacement", std::vector<double>{u.x(), u.y(), u.z()});
@@ -124,7 +138,8 @@ VOLT_PLUGIN_MAIN(descriptor,
                         w.field("slip_vector", std::vector<double>{s.x(), s.y(), s.z()});
                         w.field("slip_vector_magnitude", Smag->getDouble(i));
                     }
-                }
+                },
+                .resolveStructureId = structureCol ? StructureIdResolver(structureTypeAt) : StructureIdResolver{}
             });
         }
 
