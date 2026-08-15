@@ -56,7 +56,6 @@ void DisplacementsEngine::buildParticleMapping(
             throw std::runtime_error("DisplacementsEngine: refIdentifiers size != refPositions size.");
         }
 
-        // Map ID -> index (reference)
         std::unordered_map<int, std::size_t> refMap;
         refMap.reserve(nRef * 2);
 
@@ -68,7 +67,6 @@ void DisplacementsEngine::buildParticleMapping(
             }
         }
 
-        // Check duplicates in current + build currentMap
         std::unordered_map<int, std::size_t> currMap;
         currMap.reserve(nCurr * 2);
 
@@ -80,7 +78,6 @@ void DisplacementsEngine::buildParticleMapping(
             }
         }
 
-        // Build current -> ref
         for(std::size_t i = 0; i < nCurr; i++){
             const int id = _identifiers->getInt(i);
             auto it = refMap.find(id);
@@ -93,7 +90,6 @@ void DisplacementsEngine::buildParticleMapping(
             }
         }
 
-        // Build ref -> current
         for(std::size_t i = 0; i < nRef; i++){
             const int id = _refIdentifiers->getInt(i);
             auto it = currMap.find(id);
@@ -102,12 +98,10 @@ void DisplacementsEngine::buildParticleMapping(
             }else if(requireCompleteRefToCurrentMapping){
                 throw std::runtime_error("DisplacementsEngine: particle ID exists in reference but not in current.");
             }else{
-                // OJO: aca estabas escribiendo en el vector equivocado
                 refToCurrentIndexMap[i] = std::numeric_limits<std::size_t>::max();
             }
         }
     }else{
-        // NO IDs: require same number of particles and assume same ordering
         if(nCurr != nRef){
             throw std::runtime_error("DisplacementsEngine: positions and refPositions size mismatch and no identifiers present.");
         }
@@ -131,16 +125,13 @@ void DisplacementsEngine::perform(){
         return;
     }
 
-    // Allocate output properties
     _displacementProperty = std::make_shared<ParticleProperty>(n, ParticleProperty::DisplacementProperty, 3, true);
     _displacementMagnitudeProperty = std::make_shared<ParticleProperty>(n, ParticleProperty::DisplacementMagnitudeProperty, 1, true);
 
-    // Build mapping
     std::vector<std::size_t> currentToRef;
     std::vector<std::size_t> refToCurrent;
     buildParticleMapping(currentToRef, refToCurrent, /*requireCompleteCurrentToRefMapping=*/true, /*requireCompleteRefToCurrentMapping=*/false);
 
-    // Accessors
     const Point3* pos = _positions->constDataPoint3();
     const Point3* refPos = _refPositions->constDataPoint3();
 
@@ -151,13 +142,11 @@ void DisplacementsEngine::perform(){
         throw std::runtime_error("DisplacementsEngine: null data pointers.");
     }
 
-    // PBC and cell matrices
     const auto pbcFlags = _simCellRef.pbcFlags();
     const auto refCellMatrix = _simCellRef.matrix();
 
     auto doRange = [&](std::size_t begin, std::size_t end){
         if(_affineMapping != AffineMappingType::NoMapping){
-            // Reduced coordinate delta + MIC + Mapping to absolute
             const AffineTransformation reducedToAbsolute =
                 (_affineMapping == AffineMappingType::ToReferenceCell) ? _simCellRef.matrix() : _simCell.matrix();
          
@@ -185,7 +174,6 @@ void DisplacementsEngine::perform(){
                 outMag[i] = u.length();
             }
         }else{
-            // Direct displacement in absolute coords + MIC by cell columns
             for(std::size_t i = begin; i < end; i++){
                 const std::size_t j = currentToRef[i];
                 Vector3 u = pos[i] - refPos[j];
@@ -232,9 +220,6 @@ void DisplacementsEngine::computeSlipVectors(
     _slipVectorProperty = std::make_shared<ParticleProperty>(n, ParticleProperty::DisplacementProperty, 3, true);
     _slipVectorMagnitudeProperty = std::make_shared<ParticleProperty>(n, ParticleProperty::DisplacementMagnitudeProperty, 1, true);
 
-    // Neighbors come from the reference configuration: the slip vector compares
-    // each bond against its pre-deformation counterpart, so the bond list must
-    // predate the deformation as well.
     CutoffNeighborFinder neighborFinder;
     if(!neighborFinder.prepare(_slipCutoff, _refPositions, _simCellRef)){
         throw std::runtime_error("DisplacementsEngine: failed to prepare the slip-vector neighbor list.");

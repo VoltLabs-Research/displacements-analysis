@@ -17,7 +17,7 @@ static DisplacementsEngine::AffineMappingType parseAffineMapping(const std::stri
     return DisplacementsEngine::AffineMappingType::NoMapping;
 }
 
-} // namespace Volt
+}
 
 static const Volt::Plugin::PluginDescriptor descriptor{
     .name = "volt-displacements",
@@ -113,10 +113,6 @@ VOLT_PLUGIN_MAIN(descriptor,
         }
 
         if (!outputBase.empty()) {
-            // displacement is a mid-pipeline stage; preserve any upstream crystal-structure
-            // classification rather than collapsing every atom to one "All" bucket. PTM writes
-            // it as `structure_id`, ackland-jones/identify-diamond as `structure_type`; both hold
-            // the StructureType enum. Fall back to "All" only when no classifier ran upstream.
             const auto* structureCol = frame.findAtomProperty("structure_id");
             if (!structureCol) structureCol = frame.findAtomProperty("structure_type");
             const auto structureTypeAt = [structureCol](std::size_t i) -> int {

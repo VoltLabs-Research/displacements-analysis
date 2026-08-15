@@ -29,9 +29,6 @@ public:
 
     void perform();
 
-    // Zimmerman slip vector: for each atom, the negative average relative
-    // displacement of reference-frame neighbors whose displacement difference
-    // exceeds the threshold. Disabled unless configured before perform().
     void setSlipVectorOptions(bool compute, double cutoff, double threshold){
         _computeSlipVector = compute;
         _slipCutoff = cutoff;
