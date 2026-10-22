@@ -14,6 +14,8 @@ using namespace Particles;
 static DisplacementsEngine::AffineMappingType parseAffineMapping(const std::string& s) {
     if (s == "toReferenceCell") return DisplacementsEngine::AffineMappingType::ToReferenceCell;
     if (s == "toCurrentCell") return DisplacementsEngine::AffineMappingType::ToCurrentCell;
+    if (s != "noMapping" && s != "none")
+        spdlog::warn("Unknown affine_mapping '{}' (expected noMapping, toReferenceCell or toCurrentCell); no affine mapping applied", s);
     return DisplacementsEngine::AffineMappingType::NoMapping;
 }
 
@@ -43,6 +45,8 @@ VOLT_PLUGIN_MAIN(descriptor,
             return AnalysisResult::failure("Invalid number of atoms");
 
         const LammpsParser::Frame& refFrame = refFramePtr ? *refFramePtr : frame;
+        if (!refFramePtr)
+            spdlog::warn("No reference frame given (--reference); the current frame is its own reference, so every displacement is zero");
 
         if (frame.natoms != refFrame.natoms)
             return AnalysisResult::failure("Atom count mismatch between current and reference frames");
