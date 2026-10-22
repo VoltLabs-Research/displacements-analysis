@@ -1,5 +1,6 @@
 #include <volt/displacements_engine.h>
 #include <volt/analysis/cutoff_neighbor_finder.h>
+#include <volt/core/progress.h>
 
 #include <stdexcept>
 #include <limits>
@@ -56,6 +57,7 @@ void DisplacementsEngine::buildParticleMapping(
             throw std::runtime_error("DisplacementsEngine: refIdentifiers size != refPositions size.");
         }
 
+        const Stopwatch mappingTimer;
         std::unordered_map<int, std::size_t> refMap;
         refMap.reserve(nRef * 2);
 
@@ -84,6 +86,7 @@ void DisplacementsEngine::buildParticleMapping(
             if(it != refMap.end()){
                 currentToRefIndexMap[i] = it->second;
             }else if(requireCompleteCurrentToRefMapping){
+                spdlog::error("Atom id {} of the current frame is not in the reference", id);
                 throw std::runtime_error("DisplacementsEngine: particle ID exists in current but not in reference.");
             }else{
                 currentToRefIndexMap[i] = std::numeric_limits<std::size_t>::max();
@@ -101,6 +104,7 @@ void DisplacementsEngine::buildParticleMapping(
                 refToCurrentIndexMap[i] = std::numeric_limits<std::size_t>::max();
             }
         }
+        spdlog::info("Matched {} atoms to the reference by identifier in {}", nCurr, mappingTimer.elapsed());
     }else{
         if(nCurr != nRef){
             throw std::runtime_error("DisplacementsEngine: positions and refPositions size mismatch and no identifiers present.");
