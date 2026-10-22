@@ -4,6 +4,7 @@
 
 #include <stdexcept>
 #include <limits>
+#include <string>
 #include <unordered_map>
 #include <vector>
 #include <cmath>
@@ -204,11 +205,30 @@ void DisplacementsEngine::perform(){
         }
     };
 
+    const Stopwatch displacementTimer;
     tbb::parallel_for(
         tbb::blocked_range<std::size_t>(0, n, 1024),
         [&](const tbb::blocked_range<std::size_t>& r){
             doRange(r.begin(), r.end());
         }
+    );
+
+    std::string minimumImage;
+    if(_useMinimumImageConvention){
+        for(std::size_t k = 0; k < 3; k++){
+            if(!pbcFlags[k]) continue;
+            if(!minimumImage.empty()) minimumImage += ' ';
+            minimumImage += "xyz"[k];
+        }
+        if(minimumImage.empty()) minimumImage = "no periodic axis";
+    }else{
+        minimumImage = "off";
+    }
+    const char* mapping = _affineMapping == AffineMappingType::ToReferenceCell ? "to reference cell"
+        : _affineMapping == AffineMappingType::ToCurrentCell ? "to current cell" : "none";
+    spdlog::info(
+        "Displacements computed for {} atoms in {} (minimum image convention: {}; affine mapping: {})",
+        n, displacementTimer.elapsed(), minimumImage, mapping
     );
 
     if(_computeSlipVector && _slipCutoff > 0.0){
