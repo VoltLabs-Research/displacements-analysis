@@ -233,6 +233,8 @@ void DisplacementsEngine::perform(){
 
     if(_computeSlipVector && _slipCutoff > 0.0){
         computeSlipVectors(currentToRef, refToCurrent);
+    }else if(_computeSlipVector){
+        spdlog::warn("Slip vectors skipped: slip_cutoff must be positive (got {})", _slipCutoff);
     }
 }
 
@@ -241,6 +243,8 @@ void DisplacementsEngine::computeSlipVectors(
     const std::vector<std::size_t>& refToCurrentIndexMap
 ){
     const std::size_t n = _positions->size();
+    spdlog::info("Computing slip vectors for {} atoms (cutoff {:.2f}, threshold {:.2f})...", n, _slipCutoff, _slipThreshold);
+    const Stopwatch timer;
     _slipVectorProperty = std::make_shared<ParticleProperty>(n, ParticleProperty::DisplacementProperty, 3, true);
     _slipVectorMagnitudeProperty = std::make_shared<ParticleProperty>(n, ParticleProperty::DisplacementMagnitudeProperty, 1, true);
 
@@ -255,6 +259,7 @@ void DisplacementsEngine::computeSlipVectors(
     const double thresholdSquared = _slipThreshold * _slipThreshold;
     constexpr std::size_t unmapped = std::numeric_limits<std::size_t>::max();
 
+    ProgressReporter progress("Computing slip vectors", n);
     tbb::parallel_for(
         tbb::blocked_range<std::size_t>(0, n, 256),
         [&](const tbb::blocked_range<std::size_t>& r){
@@ -281,8 +286,10 @@ void DisplacementsEngine::computeSlipVectors(
                     outSlipMag[i] = slip.length();
                 }
             }
+            progress.advance(r.size());
         }
     );
+    spdlog::info("Slip vectors computed in {}", timer.elapsed());
 }
 
 }
