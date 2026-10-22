@@ -95,14 +95,20 @@ VOLT_PLUGIN_MAIN(descriptor,
                 if (m > maxMag) maxMag = m;
                 if (m < minMag) minMag = m;
             }
+            spdlog::info("Displacement magnitude: min {:.4f}, mean {:.4f}, max {:.4f}",
+                minMag, totalMag / static_cast<double>(n), maxMag);
         }
 
         if (Smag) {
+            std::size_t slippedAtoms = 0;
             for (std::size_t i = 0; i < n; ++i) {
                 double m = Smag->getDouble(i);
                 totalSlipMag += m;
                 if (m > maxSlipMag) maxSlipMag = m;
+                if (m > 0.0) ++slippedAtoms;
             }
+            spdlog::info("Slip vector magnitude: mean {:.4f}, max {:.4f}; {} atoms with nonzero slip ({:.1f}%)",
+                totalSlipMag / static_cast<double>(n), maxSlipMag, slippedAtoms, percentOf(slippedAtoms, n));
         }
 
         nlohmann::json result;
