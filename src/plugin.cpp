@@ -3,6 +3,7 @@
 #include <volt/displacements_engine.h>
 #include <volt/core/frame_adapter.h>
 #include <volt/core/analysis_result.h>
+#include <volt/core/progress.h>
 #include <volt/structures/crystal_structure_types.h>
 
 #include <limits>
@@ -76,7 +77,10 @@ VOLT_PLUGIN_MAIN(descriptor,
             CLI::getDouble(opts, "--slip_cutoff", 3.5),
             CLI::getDouble(opts, "--slip_threshold", 0.5)
         );
+        // The displacement engine, then the outputs with their per-atom vector columns.
+        ProgressSteps steps({1.0, 3.0});
         engine.perform();
+        steps.next();
 
         auto U = engine.displacements();
         auto Umag = engine.displacementMagnitudes();

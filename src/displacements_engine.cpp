@@ -133,9 +133,13 @@ void DisplacementsEngine::perform(){
     _displacementProperty = std::make_shared<ParticleProperty>(n, ParticleProperty::DisplacementProperty, 3, true);
     _displacementMagnitudeProperty = std::make_shared<ParticleProperty>(n, ParticleProperty::DisplacementMagnitudeProperty, 1, true);
 
+    // Matching atoms to the reference, the displacements, then the slip vectors when they are asked for.
+    const bool slipVectors = _computeSlipVector && _slipCutoff > 0.0;
+    ProgressSteps steps({1.0, 1.0, slipVectors ? 2.0 : 0.0});
     std::vector<std::size_t> currentToRef;
     std::vector<std::size_t> refToCurrent;
     buildParticleMapping(currentToRef, refToCurrent, /*requireCompleteCurrentToRefMapping=*/true, /*requireCompleteRefToCurrentMapping=*/false);
+    steps.next();
 
     const Point3* pos = _positions->constDataPoint3();
     const Point3* refPos = _refPositions->constDataPoint3();
@@ -230,8 +234,9 @@ void DisplacementsEngine::perform(){
         "Displacements computed for {} atoms in {} (minimum image convention: {}; affine mapping: {})",
         n, displacementTimer.elapsed(), minimumImage, mapping
     );
+    steps.next();
 
-    if(_computeSlipVector && _slipCutoff > 0.0){
+    if(slipVectors){
         computeSlipVectors(currentToRef, refToCurrent);
     }else if(_computeSlipVector){
         spdlog::warn("Slip vectors skipped: slip_cutoff must be positive (got {})", _slipCutoff);
