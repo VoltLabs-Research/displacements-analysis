@@ -12,6 +12,7 @@
           "modifier": {
             "name": "Displacements Analysis",
             "key": "displacements-analysis",
+            "category": "Deformation",
             "icon": "HiCube",
             "author": "Rodolfo Herrera",
             "license": "MIT",
