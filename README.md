@@ -5,6 +5,7 @@ Computes per-atom displacement vectors (and optional Zimmerman slip vectors) rel
 ## Install
 
 ```bash
+npm install -g @voltstack/vpm
 vpm install @voltlabs/displacements-analysis
 ```
 
