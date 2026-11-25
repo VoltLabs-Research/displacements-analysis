@@ -1,26 +1,15 @@
 #include <volt/plugin/plugin_main.h>
 #include <volt/plugin/output_serializer.h>
 #include <volt/displacements_engine.h>
+#include <volt/displacements_log.h>
 #include <volt/core/frame_adapter.h>
 #include <volt/core/analysis_result.h>
 #include <volt/core/progress.h>
 #include <volt/structures/crystal_structure_types.h>
 
 #include <limits>
-
-namespace Volt {
-
-using namespace Particles;
-
-static DisplacementsEngine::AffineMappingType parseAffineMapping(const std::string& s) {
-    if (s == "toReferenceCell") return DisplacementsEngine::AffineMappingType::ToReferenceCell;
-    if (s == "toCurrentCell") return DisplacementsEngine::AffineMappingType::ToCurrentCell;
-    if (s != "noMapping" && s != "none")
-        spdlog::warn("Unknown affine_mapping '{}' (expected noMapping, toReferenceCell or toCurrentCell); no affine mapping applied", s);
-    return DisplacementsEngine::AffineMappingType::NoMapping;
-}
-
-}
+#include <optional>
+#include <string>
 
 static const Volt::Plugin::PluginDescriptor descriptor{
     .name = "volt-displacements",
@@ -45,12 +34,8 @@ VOLT_PLUGIN_MAIN(descriptor,
         if (frame.natoms <= 0)
             return AnalysisResult::failure("Invalid number of atoms");
 
-        const LammpsParser::Frame& refFrame = refFramePtr ? *refFramePtr : frame;
-        if (!refFramePtr)
-            spdlog::warn("No reference frame given (--reference); the current frame is its own reference, so every displacement is zero");
-
-        if (frame.natoms != refFrame.natoms)
-            return AnalysisResult::failure("Atom count mismatch between current and reference frames");
+        const LammpsParser::Frame& refFrame = *refFramePtr;
+        DisplacementsLog log;
 
         auto positions = FrameAdapter::createPositionPropertyShared(frame);
         if (!positions) return AnalysisResult::failure("Failed to create position property");
@@ -64,22 +49,27 @@ VOLT_PLUGIN_MAIN(descriptor,
             return AnalysisResult::failure("Failed to create identifier properties");
 
         bool mic = CLI::getBool(opts, "--mic", true);
-        auto affineMapping = parseAffineMapping(CLI::getString(opts, "--affine_mapping", "noMapping"));
+        const std::string affineMappingName = CLI::getString(opts, "--affine_mapping", "noMapping");
+        const std::optional<AffineMapping> affineMapping = parseAffineMapping(affineMappingName);
+        if (!affineMapping)
+            spdlog::warn("Unknown affine_mapping '{}' (expected noMapping, toReferenceCell or toCurrentCell); no affine mapping applied", affineMappingName);
 
         DisplacementsEngine engine(
             positions.get(), frame.simulationCell,
             refPositions.get(), refFrame.simulationCell,
             identifiers.get(), refIdentifiers.get(),
-            mic, affineMapping
+            mic, affineMapping.value_or(AffineMapping::NoMapping)
         );
         engine.setSlipVectorOptions(
             CLI::getBool(opts, "--compute_slip_vector", true),
             CLI::getDouble(opts, "--slip_cutoff", 3.5),
             CLI::getDouble(opts, "--slip_threshold", 0.5)
         );
-        // The displacement engine, then the outputs with their per-atom vector columns.
-        ProgressSteps steps({1.0, 3.0});
-        engine.perform();
+        ProgressSteps steps({
+            {"Computing displacements", 1.0},
+            {"Writing outputs", 3.0},
+        });
+        engine.perform(log);
         steps.next();
 
         auto U = engine.displacements();
@@ -88,42 +78,41 @@ VOLT_PLUGIN_MAIN(descriptor,
         auto Smag = engine.slipVectorMagnitudes();
 
         const std::size_t n = static_cast<std::size_t>(frame.natoms);
-        double totalMag = 0.0, maxMag = 0.0;
-        double minMag = std::numeric_limits<double>::max();
-        double totalSlipMag = 0.0, maxSlipMag = 0.0;
+        DisplacementsEngine::Summary summary;
+        summary.atoms = n;
+        summary.hasDisplacements = U && Umag;
+        summary.hasSlipVectors = static_cast<bool>(Smag);
 
-        if (U && Umag) {
+        if (summary.hasDisplacements) {
             for (std::size_t i = 0; i < n; ++i) {
                 double m = Umag->getDouble(i);
-                totalMag += m;
-                if (m > maxMag) maxMag = m;
-                if (m < minMag) minMag = m;
+                summary.totalMagnitude += m;
+                if (m > summary.maxMagnitude) summary.maxMagnitude = m;
+                if (m < summary.minMagnitude) summary.minMagnitude = m;
             }
-            spdlog::info("Displacement magnitude: min {:.4f}, mean {:.4f}, max {:.4f}",
-                minMag, totalMag / static_cast<double>(n), maxMag);
         }
 
-        if (Smag) {
-            std::size_t slippedAtoms = 0;
+        if (summary.hasSlipVectors) {
             for (std::size_t i = 0; i < n; ++i) {
                 double m = Smag->getDouble(i);
-                totalSlipMag += m;
-                if (m > maxSlipMag) maxSlipMag = m;
-                if (m > 0.0) ++slippedAtoms;
+                summary.totalSlipMagnitude += m;
+                if (m > summary.maxSlipMagnitude) summary.maxSlipMagnitude = m;
+                if (m > 0.0) ++summary.slippedAtoms;
             }
-            spdlog::info("Slip vector magnitude: mean {:.4f}, max {:.4f}; {} atoms with nonzero slip ({:.1f}%)",
-                totalSlipMag / static_cast<double>(n), maxSlipMag, slippedAtoms, percentOf(slippedAtoms, n));
         }
+        log.dump(summary);
 
         nlohmann::json result;
         result["main_listing"] = {
-            {"average_displacement_magnitude", n > 0 ? totalMag / static_cast<double>(n) : 0.0},
-            {"max_displacement_magnitude", maxMag},
-            {"min_displacement_magnitude", (minMag == std::numeric_limits<double>::max()) ? 0.0 : minMag}
+            {"average_displacement_magnitude", n > 0 ? summary.totalMagnitude / static_cast<double>(n) : 0.0},
+            {"max_displacement_magnitude", summary.maxMagnitude},
+            {"min_displacement_magnitude",
+                (summary.minMagnitude == std::numeric_limits<double>::max()) ? 0.0 : summary.minMagnitude}
         };
-        if (Smag) {
-            result["main_listing"]["average_slip_vector_magnitude"] = n > 0 ? totalSlipMag / static_cast<double>(n) : 0.0;
-            result["main_listing"]["max_slip_vector_magnitude"] = maxSlipMag;
+        if (summary.hasSlipVectors) {
+            result["main_listing"]["average_slip_vector_magnitude"] =
+                n > 0 ? summary.totalSlipMagnitude / static_cast<double>(n) : 0.0;
+            result["main_listing"]["max_slip_vector_magnitude"] = summary.maxSlipMagnitude;
         }
 
         if (!outputBase.empty()) {

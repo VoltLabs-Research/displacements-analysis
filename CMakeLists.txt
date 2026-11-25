@@ -7,6 +7,6 @@ if(NOT TARGET coretoolkit::coretoolkit)
 endif()
 
 volt_add_plugin(displacement-analysis
-    SOURCES src/displacements_engine.cpp
+    SOURCES src/displacements_engine.cpp src/displacements_log.cpp
     MAIN_SOURCE src/plugin.cpp
 )

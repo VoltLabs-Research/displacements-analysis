@@ -1,11 +1,9 @@
 #include <volt/displacements_engine.h>
 #include <volt/analysis/cutoff_neighbor_finder.h>
 #include <volt/core/progress.h>
+#include <volt/displacements_log.h>
 
 #include <stdexcept>
-#include <limits>
-#include <string>
-#include <unordered_map>
 #include <vector>
 #include <cmath>
 
@@ -24,7 +22,7 @@ DisplacementsEngine::DisplacementsEngine(
     ParticleProperty* identifiers,
     ParticleProperty* refIdentifiers,
     bool useMinimumImageConvention,
-    AffineMappingType affineMapping
+    AffineMapping affineMapping
 )
     : _positions(positions),
       _refPositions(refPositions),
@@ -35,90 +33,7 @@ DisplacementsEngine::DisplacementsEngine(
       _useMinimumImageConvention(useMinimumImageConvention),
       _affineMapping(affineMapping){}
 
-void DisplacementsEngine::buildParticleMapping(
-    std::vector<std::size_t>& currentToRefIndexMap,
-    std::vector<std::size_t>& refToCurrentIndexMap,
-    bool requireCompleteCurrentToRefMapping,
-    bool requireCompleteRefToCurrentMapping
-) const{
-    const std::size_t nCurr = _positions->size();
-    const std::size_t nRef = _refPositions->size();
-
-    currentToRefIndexMap.resize(nCurr);
-    refToCurrentIndexMap.resize(nRef);
-
-    const bool haveIds = (_identifiers && _refIdentifiers);
-    
-    if(haveIds){
-        if(_identifiers->size() != nCurr){
-            throw std::runtime_error("DisplacementsEngine: identifiers size != positions size.");
-        }
-
-        if(_refIdentifiers->size() != nRef){
-            throw std::runtime_error("DisplacementsEngine: refIdentifiers size != refPositions size.");
-        }
-
-        const Stopwatch mappingTimer;
-        std::unordered_map<int, std::size_t> refMap;
-        refMap.reserve(nRef * 2);
-
-        for(std::size_t i = 0; i < nRef; i++){
-            const int id = _refIdentifiers->getInt(i);
-            auto [it, inserted] = refMap.emplace(id, i);
-            if(!inserted){
-                throw std::runtime_error("DisplacementsEngine: duplicate particle identifier in reference configuration.");
-            }
-        }
-
-        std::unordered_map<int, std::size_t> currMap;
-        currMap.reserve(nCurr * 2);
-
-        for(std::size_t i = 0; i < nCurr; i++){
-            const int id = _identifiers->getInt(i);
-            auto [it, inserted] = currMap.emplace(id, i);
-            if(!inserted) {
-                throw std::runtime_error("DisplacementsEngine: duplicate particle identifier in current configuration.");
-            }
-        }
-
-        for(std::size_t i = 0; i < nCurr; i++){
-            const int id = _identifiers->getInt(i);
-            auto it = refMap.find(id);
-            if(it != refMap.end()){
-                currentToRefIndexMap[i] = it->second;
-            }else if(requireCompleteCurrentToRefMapping){
-                spdlog::error("Atom id {} of the current frame is not in the reference", id);
-                throw std::runtime_error("DisplacementsEngine: particle ID exists in current but not in reference.");
-            }else{
-                currentToRefIndexMap[i] = std::numeric_limits<std::size_t>::max();
-            }
-        }
-
-        for(std::size_t i = 0; i < nRef; i++){
-            const int id = _refIdentifiers->getInt(i);
-            auto it = currMap.find(id);
-            if(it != currMap.end()){
-                refToCurrentIndexMap[i] = it->second;
-            }else if(requireCompleteRefToCurrentMapping){
-                throw std::runtime_error("DisplacementsEngine: particle ID exists in reference but not in current.");
-            }else{
-                refToCurrentIndexMap[i] = std::numeric_limits<std::size_t>::max();
-            }
-        }
-        spdlog::info("Matched {} atoms to the reference by identifier in {}", nCurr, mappingTimer.elapsed());
-    }else{
-        if(nCurr != nRef){
-            throw std::runtime_error("DisplacementsEngine: positions and refPositions size mismatch and no identifiers present.");
-        }
-
-        for(std::size_t i = 0; i < nCurr; i++){
-            currentToRefIndexMap[i] = i;
-            refToCurrentIndexMap[i] = i;
-        }
-    }
-}
-
-void DisplacementsEngine::perform(){
+void DisplacementsEngine::perform(DisplacementsLog& log){
     if(!_positions || !_refPositions){
         throw std::runtime_error("DisplacementsEngine: null input properties.");
     }
@@ -133,12 +48,18 @@ void DisplacementsEngine::perform(){
     _displacementProperty = std::make_shared<ParticleProperty>(n, ParticleProperty::DisplacementProperty, 3, true);
     _displacementMagnitudeProperty = std::make_shared<ParticleProperty>(n, ParticleProperty::DisplacementMagnitudeProperty, 1, true);
 
-    // Matching atoms to the reference, the displacements, then the slip vectors when they are asked for.
     const bool slipVectors = _computeSlipVector && _slipCutoff > 0.0;
-    ProgressSteps steps({1.0, 1.0, slipVectors ? 2.0 : 0.0});
-    std::vector<std::size_t> currentToRef;
-    std::vector<std::size_t> refToCurrent;
-    buildParticleMapping(currentToRef, refToCurrent, /*requireCompleteCurrentToRefMapping=*/true, /*requireCompleteRefToCurrentMapping=*/false);
+    ProgressSteps steps({
+        {"Matching atoms to the reference", 1.0},
+        {"Computing displacements", 1.0},
+        {"Computing slip vectors", 2.0, slipVectors},
+    });
+    const ReferenceMatch match = ReferenceMatch::build(
+        _identifiers, _refIdentifiers, n, _refPositions->size(), ReferenceMatch::MissingAtoms::Rejected
+    );
+    log.dump(match);
+    const std::vector<std::size_t>& currentToRef = match.currentToReference;
+    const std::vector<std::size_t>& refToCurrent = match.referenceToCurrent;
     steps.next();
 
     const Point3* pos = _positions->constDataPoint3();
@@ -155,9 +76,9 @@ void DisplacementsEngine::perform(){
     const auto refCellMatrix = _simCellRef.matrix();
 
     auto doRange = [&](std::size_t begin, std::size_t end){
-        if(_affineMapping != AffineMappingType::NoMapping){
+        if(_affineMapping != AffineMapping::NoMapping){
             const AffineTransformation reducedToAbsolute =
-                (_affineMapping == AffineMappingType::ToReferenceCell) ? _simCellRef.matrix() : _simCell.matrix();
+                (_affineMapping == AffineMapping::ToReferenceCell) ? _simCellRef.matrix() : _simCell.matrix();
          
             const AffineTransformation currRecip = _simCell.inverseMatrix();
             const AffineTransformation refRecip = _simCellRef.inverseMatrix();
@@ -209,37 +130,18 @@ void DisplacementsEngine::perform(){
         }
     };
 
-    const Stopwatch displacementTimer;
     tbb::parallel_for(
         tbb::blocked_range<std::size_t>(0, n, 1024),
         [&](const tbb::blocked_range<std::size_t>& r){
             doRange(r.begin(), r.end());
         }
     );
-
-    std::string minimumImage;
-    if(_useMinimumImageConvention){
-        for(std::size_t k = 0; k < 3; k++){
-            if(!pbcFlags[k]) continue;
-            if(!minimumImage.empty()) minimumImage += ' ';
-            minimumImage += "xyz"[k];
-        }
-        if(minimumImage.empty()) minimumImage = "no periodic axis";
-    }else{
-        minimumImage = "off";
-    }
-    const char* mapping = _affineMapping == AffineMappingType::ToReferenceCell ? "to reference cell"
-        : _affineMapping == AffineMappingType::ToCurrentCell ? "to current cell" : "none";
-    spdlog::info(
-        "Displacements computed for {} atoms in {} (minimum image convention: {}; affine mapping: {})",
-        n, displacementTimer.elapsed(), minimumImage, mapping
-    );
+    log.dump(*this);
     steps.next();
 
     if(slipVectors){
         computeSlipVectors(currentToRef, refToCurrent);
-    }else if(_computeSlipVector){
-        spdlog::warn("Slip vectors skipped: slip_cutoff must be positive (got {})", _slipCutoff);
+        log.dump(*_slipVectorProperty);
     }
 }
 
@@ -248,8 +150,6 @@ void DisplacementsEngine::computeSlipVectors(
     const std::vector<std::size_t>& refToCurrentIndexMap
 ){
     const std::size_t n = _positions->size();
-    spdlog::info("Computing slip vectors for {} atoms (cutoff {:.2f}, threshold {:.2f})...", n, _slipCutoff, _slipThreshold);
-    const Stopwatch timer;
     _slipVectorProperty = std::make_shared<ParticleProperty>(n, ParticleProperty::DisplacementProperty, 3, true);
     _slipVectorMagnitudeProperty = std::make_shared<ParticleProperty>(n, ParticleProperty::DisplacementMagnitudeProperty, 1, true);
 
@@ -262,7 +162,6 @@ void DisplacementsEngine::computeSlipVectors(
     Vector3* outSlip = _slipVectorProperty->dataVector3();
     double* outSlipMag = _slipVectorMagnitudeProperty->dataDouble();
     const double thresholdSquared = _slipThreshold * _slipThreshold;
-    constexpr std::size_t unmapped = std::numeric_limits<std::size_t>::max();
 
     ProgressReporter progress("Computing slip vectors", n);
     tbb::parallel_for(
@@ -276,7 +175,7 @@ void DisplacementsEngine::computeSlipVectors(
                 for(CutoffNeighborFinder::Query neighborQuery(neighborFinder, refIndex);
                     !neighborQuery.atEnd(); neighborQuery.next()){
                     const std::size_t neighborCurrentIndex = refToCurrentIndexMap[neighborQuery.current()];
-                    if(neighborCurrentIndex == unmapped) continue;
+                    if(neighborCurrentIndex == ReferenceMatch::kNoCounterpart) continue;
 
                     const Vector3 relativeSlip = displacements[neighborCurrentIndex] - displacements[i];
                     if(relativeSlip.squaredLength() <= thresholdSquared) continue;
@@ -294,7 +193,6 @@ void DisplacementsEngine::computeSlipVectors(
             progress.advance(r.size());
         }
     );
-    spdlog::info("Slip vectors computed in {}", timer.elapsed());
 }
 
 }
