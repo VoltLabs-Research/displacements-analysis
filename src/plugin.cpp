@@ -128,13 +128,13 @@ VOLT_PLUGIN_MAIN(descriptor,
                     const int s = structureTypeAt(i);
                     return s < 0 ? std::string("All") : std::string(structureTypeName(s));
                 },
-                .perAtomColumnWriter = [&U, &Umag, &S, &Smag](ColumnarAtomWriter& w, std::size_t i) {
+                .perAtomColumnWriter = [&U, &Umag, &S, &Smag](ColumnarRowWriter& w, std::size_t i) {
                     const Vector3 u = U ? U->dataVector3()[i] : Vector3(0.0, 0.0, 0.0);
-                    w.field("displacement", std::vector<double>{u.x(), u.y(), u.z()});
+                    w.field("displacement", u);
                     w.field("magnitude", Umag ? Umag->getDouble(i) : 0.0);
                     if (S && Smag) {
                         const Vector3 s = S->dataVector3()[i];
-                        w.field("slip_vector", std::vector<double>{s.x(), s.y(), s.z()});
+                        w.field("slip_vector", s);
                         w.field("slip_vector_magnitude", Smag->getDouble(i));
                     }
                 },
